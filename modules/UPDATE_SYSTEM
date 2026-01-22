@@ -6,63 +6,87 @@ chcp 65001 >nul
 set "CURRENT_VER=1.1"
 set "URL_VERSION=https://raw.githubusercontent.com/thetung262/AWS_Tool_TTN_Update/refs/heads/main/version.txt"
 set "URL_RAW_FOLDER=https://raw.githubusercontent.com/thetung262/AWS_Tool_TTN_Update/refs/heads/main"
-set "MOD_DIR=modules"
 
 :CHECK_UPDATE
 cls
 echo ┌──────────────────────────────────────────────────────┐
 echo │          HE THONG KIEM TRA CAP NHAT TU DONG          │
 echo ├──────────────────────────────────────────────────────┤
-echo │  Phien ban hien tai: %CURRENT_VER%                       
+echo │                                                      │
+echo │   Phien ban hien tai: %CURRENT_VER%                       
+echo │   Dang ket noi den may chu GitHub...                 │
+echo │                                                      │
 echo └──────────────────────────────────────────────────────┘
-echo [*] Dang kiem tra may chu...
+echo.
 
-:: Tai file version tam ve de so sanh
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%URL_VERSION%', '%TEMP%\web_ver.txt')" >nul 2>&1
+:: Tai version.txt tam
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object Net.WebClient).DownloadFile('%URL_VERSION%', '%TEMP%\web_ver.txt') } catch { exit 1 }"
 
-if not exist "%TEMP%\web_ver.txt" (
-    echo [-] LOI: Khong the ket noi toi may chu cap nhat.
-    pause
-    exit /b
+if %errorlevel% neq 0 (
+    echo ╔══════════════════════════════════════════════════════╗
+    echo ║  [-] LOI: Khong the ket noi toi GitHub Server!       ║
+    echo ╚══════════════════════════════════════════════════════╝
+    echo [!] Vui long kiem tra lai ket noi Internet.
+    pause & exit /b
 )
 
 set /p WEB_VER= < "%TEMP%\web_ver.txt"
-
 if "%WEB_VER%"=="%CURRENT_VER%" (
-    echo [+] Ban dang su dung phien ban moi nhat.
-    pause
-    exit /b
+    echo [+] Chuc mung! Ban dang su dung phien ban moi nhat.
+    del /f /q "%TEMP%\web_ver.txt"
+    pause & exit /b
 )
 
 echo ╔══════════════════════════════════════════════════════╗
 echo ║       PHAT HIEN PHIEN BAN MOI: %WEB_VER%                
+echo ╠══════════════════════════════════════════════════════╣
+echo ║                                                      ║
+echo ║   Ban co muon thuc hien cap nhat ngay bay gio?       ║
+echo ║                                                      ║
 echo ╚══════════════════════════════════════════════════════╝
 echo.
-set /p confirm=">>> Ban co muon cap nhat ngay khong? (Y/N): "
-if /i "!confirm!" neq "Y" exit /b
+set /p confirm=">>> Dong y cap nhat? (Y/N): "
+if /i "!confirm!" neq "Y" (
+    echo [-] Da huy bo thao tac cap nhat.
+    del /f /q "%TEMP%\web_ver.txt"
+    pause & exit /b
+)
 
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │          DANG TIEN HANH TAI GOI CAP NHAT             │
+echo ├──────────────────────────────────────────────────────┤
 echo.
-echo [*] Dang tien hanh tai du lieu moi...
 
-:: --- DANH SACH FILE CAN TAI ---
-:: Ban liet ke tat ca cac file can tai o day
-for %%F in (MENU_TONG.bat modules\TAO_VPS_AWS.bat modules\XOA_VPS_AWS.bat modules\TAT_VPS_AWS.bat modules\BAT_VPS_AWS.bat modules\NEWSETUP_AWS.bat modules\TAO_PROXY_AWS.bat modules\AWS_MANAGER_PROFILES.bat) do (
-    echo [+] Dang tai: %%F ...
-    set "FILE_URL=%URL_RAW_FOLDER%/%%F"
+:: --- DANH SACH FILE (GIU NGUYEN TEN KHONG DUOI NHU BAN YEU CAU) ---
+for %%F in (version.txt AWS_CLOUD_ALL-IN-ONE.bat modules/AWS_CHECKER_PRO modules/AWS_MANAGER_PROFILES modules/BAT_VPS_AWS modules/INSTALL_AWS_CLI modules/NEWSETUP_AWS modules/TAO_PROXY_AWS modules/TAO_VPS_AWS modules/TAT_VPS_AWS modules/UPDATE_SYSTEM modules/XOA_VPS_AWS) do (
+    
+    set "URL_PATH=%%F"
     set "LOCAL_PATH=%%F"
+    set "LOCAL_PATH=!LOCAL_PATH:/=\!"
     
-    :: Dung PowerShell de tai va ghi de
-    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('!FILE_URL!', '!LOCAL_PATH!')"
+    :: Lay ten file thuan tuy de hien thi cho dep
+    for %%A in ("!LOCAL_PATH!") do set "F_NAME=%%~nxA"
     
-    if !errorlevel! neq 0 echo [!] Canh bao: Loi khi tai %%F
+    echo [*] Dang tai: !F_NAME! ...
+    
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $url = '%URL_RAW_FOLDER%/!URL_PATH!'; $file = '!LOCAL_PATH!'; try { (New-Object Net.WebClient).DownloadFile($url, $file) } catch { exit 1 }"
+    
+    if !errorlevel! neq 0 (
+        echo [!] LOI: Khong thay file !URL_PATH! tren Server.
+    ) else (
+        echo [OK] Da cap nhat: !F_NAME!
+    )
+    echo ────────────────────────────────────────────────────────
 )
 
 echo.
 echo ╔══════════════════════════════════════════════════════╗
 echo ║             CAP NHAT HOAN TAT!                       ║
 echo ╚══════════════════════════════════════════════════════╝
-echo [-] Vui long khoi dong lai Menu Tong de ap dung.
+echo [-] Tat ca modules da duoc lam moi (khong duoi file).
+echo [-] Vui long khoi dong lai AWS_CLOUD_ALL-IN-ONE.bat
+echo.
 del /f /q "%TEMP%\web_ver.txt"
 pause
-
 exit
