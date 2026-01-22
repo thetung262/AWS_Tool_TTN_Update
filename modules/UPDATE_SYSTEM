@@ -1,0 +1,67 @@
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:: --- CAU HINH THONG TIN CAP NHAT ---
+set "CURRENT_VER=1.1"
+set "URL_VERSION=https://raw.githubusercontent.com/user/repo/main/version.txt"
+set "URL_RAW_FOLDER=https://raw.githubusercontent.com/user/repo/main"
+set "MOD_DIR=modules"
+
+:CHECK_UPDATE
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │          HE THONG KIEM TRA CAP NHAT TU DONG          │
+echo ├──────────────────────────────────────────────────────┤
+echo │  Phien ban hien tai: %CURRENT_VER%                       
+echo └──────────────────────────────────────────────────────┘
+echo [*] Dang kiem tra may chu...
+
+:: Tai file version tam ve de so sanh
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%URL_VERSION%', '%TEMP%\web_ver.txt')" >nul 2>&1
+
+if not exist "%TEMP%\web_ver.txt" (
+    echo [-] LOI: Khong the ket noi toi may chu cap nhat.
+    pause
+    exit /b
+)
+
+set /p WEB_VER= < "%TEMP%\web_ver.txt"
+
+if "%WEB_VER%"=="%CURRENT_VER%" (
+    echo [+] Ban dang su dung phien ban moi nhat.
+    pause
+    exit /b
+)
+
+echo ╔══════════════════════════════════════════════════════╗
+echo ║       PHAT HIEN PHIEN BAN MOI: %WEB_VER%                
+echo ╚══════════════════════════════════════════════════════╝
+echo.
+set /p confirm=">>> Ban co muon cap nhat ngay khong? (Y/N): "
+if /i "!confirm!" neq "Y" exit /b
+
+echo.
+echo [*] Dang tien hanh tai du lieu moi...
+
+:: --- DANH SACH FILE CAN TAI ---
+:: Ban liet ke tat ca cac file can tai o day
+for %%F in (MENU_TONG.bat modules\TAO_VPS_AWS.bat modules\XOA_VPS_AWS.bat modules\TAT_VPS_AWS.bat modules\BAT_VPS_AWS.bat modules\NEWSETUP_AWS.bat modules\TAO_PROXY_AWS.bat modules\AWS_MANAGER_PROFILES.bat) do (
+    echo [+] Dang tai: %%F ...
+    set "FILE_URL=%URL_RAW_FOLDER%/%%F"
+    set "LOCAL_PATH=%%F"
+    
+    :: Dung PowerShell de tai va ghi de
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('!FILE_URL!', '!LOCAL_PATH!')"
+    
+    if !errorlevel! neq 0 echo [!] Canh bao: Loi khi tai %%F
+)
+
+echo.
+echo ╔══════════════════════════════════════════════════════╗
+echo ║             CAP NHAT HOAN TAT!                       ║
+echo ╚══════════════════════════════════════════════════════╝
+echo [-] Vui long khoi dong lai Menu Tong de ap dung.
+del /f /q "%TEMP%\web_ver.txt"
+pause
+exit

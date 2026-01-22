@@ -1,0 +1,333 @@
+:QUANLY_AWS
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:MENU
+cls
+powershell -NoProfile -Command "[Console]::ResetColor()"
+echo ┌──────────────────────────────────────────────────────┐
+echo │      HE THONG QUAN LY TAI KHOAN AWS ACCESS KEYS      │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   [1] Them Tai Khoan AWS                             │
+echo │   [2] Kiem Tra Tai Khoan (Liet Ke va Xem VPS)        │
+echo │   [3] Xoa Tai Khoan AWS (One or All)                 │
+echo │   [4] Check Tai Khoan AWS Live/Die                   │
+echo │   ---                                                │
+echo │   [0] Thoat                                          │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+set /p choice=">>> Moi ban chon (1-4): "
+
+if "%choice%"=="1" goto MENU_ADD_ACC
+if "%choice%"=="2" goto LIST_ACCOUNTS
+if "%choice%"=="3" goto MENU_DELETE_ACC
+if "%choice%"=="4" set "TARGET=AWS_CHECKER_PRO" & goto EXEC_VIRTUAL
+if "%choice%"=="0" exit /b
+goto MENU
+
+:MENU_ADD_ACC
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║             MENU: THEM TAI KHOAN AWS                 ║
+echo ╚══════════════════════════════════════════════════════╝
+echo   [1] Nhap Thu Cong (AWS_Access_Key)
+echo   [2] Nhap hang loat (File accounts.txt)
+echo   [3] Nhap tu Google Sheets (Link CSV)
+echo   ---                                                
+echo   [0] Quay lai Menu chinh
+echo --------------------------------------------------------
+set /p choice=">>> Moi ban chon (1-4): "
+
+if "%choice%"=="2" goto IMPORT_BULK
+if "%choice%"=="3" goto IMPORT_SHEET
+if "%choice%"=="1" goto ADD_MANUAL
+if "%choice%"=="0" goto MENU
+goto MENU_ADD_ACC
+
+:ADD_MANUAL
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║              NHAP THU CONG TAI KHOAN                 ║
+echo ╚══════════════════════════════════════════════════════╝
+set "PRO_NAME="
+set /p PRO_NAME="[+] Nhap ten Profile (0 de quay lai): "
+if "%PRO_NAME%"=="0" goto MENU_ADD_ACC
+if "%PRO_NAME%"=="" goto ADD_MANUAL
+
+set "ACCESS_KEY="
+set /p ACCESS_KEY="[+] Nhap Access Key ID (20 ky tu): "
+if "%ACCESS_KEY%"=="0" goto MENU_ADD_ACC
+
+set "SECRET_KEY="
+set /p SECRET_KEY="[+] Nhap Secret Access Key (40 ky tu): "
+if "%SECRET_KEY%"=="0" goto MENU_ADD_ACC
+
+:: Luu vao he thong AWS
+call aws configure set aws_access_key_id "%ACCESS_KEY%" --profile "%PRO_NAME%"
+call aws configure set aws_secret_access_key "%SECRET_KEY%" --profile "%PRO_NAME%"
+call aws configure set region "ap-northeast-1" --profile "%PRO_NAME%"
+call aws configure set output table --profile "%PRO_NAME%"
+
+:: In thong bao mau (Dung bien moi truong de tranh loi Parser)
+set "MSG_SUCCESS=[OK] DA LUU PROFILE THANH CONG: %PRO_NAME%"
+powershell -NoProfile -Command "Write-Host $env:MSG_SUCCESS -ForegroundColor DarkGreen; [Console]::ResetColor()"
+pause & goto MENU
+
+:IMPORT_BULK
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║     NHAP TU FILE accounts.txt - CHECK TRUNG LAP      ║
+echo ╚══════════════════════════════════════════════════════╝
+:: --- PHAN GOI Y DINH DANG ---
+echo [-] YEU CAU DINH DANG FILE accounts.txt:
+echo     Ten_Profile^|Access_Key^|Secret_Key
+echo.
+echo [-] VI DU MAU:
+echo     tai-khoan-01^|AKIAIOSFODNN7EXAMPLE^|wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+echo --------------------------------------------------------
+if not exist "accounts.txt" (
+    powershell -NoProfile -Command "Write-Host '[Loi] Khong tim thay file accounts.txt.' -ForegroundColor DarkRed; [Console]::ResetColor()"
+    pause & goto MENU_ADD_ACC
+)
+
+:: Tao danh sach profile hien tai vao file tam
+set "EXIST_PRO=%TEMP%\exist_aws_bulk.tmp"
+aws configure list-profiles > "%EXIST_PRO%"
+
+set "REG_BULK="
+set /p REG_BULK="[-] Nhap Region chung (Mac dinh ap-northeast-1, 0 de quay lai): "
+if "%REG_BULK%"=="0" goto MENU_ADD_ACC
+if "%REG_BULK%"=="" set "REG_BULK=ap-northeast-1"
+
+echo.
+echo [*] Dang quet va so sanh du lieu tu file...
+echo --------------------------------------------------------
+
+for /f "usebackq tokens=1,2,3 delims=|" %%a in ("accounts.txt") do (
+    set "V_NAME=%%a"
+    set "V_ACC=%%b"
+    set "V_SEC=%%c"
+    
+    if not "%%b"=="" (
+        :: Kiem tra trung lap
+        findstr /x /c:"%%a" "%EXIST_PRO%" >nul
+        if !errorlevel! equ 0 (
+            echo [-] Profile [%%a] da ton tai. Bo qua.
+        ) else (
+            echo [+] Dang nap moi: %%a
+            call aws configure set aws_access_key_id "%%b" --profile "%%a"
+            call aws configure set aws_secret_access_key "%%c" --profile "%%a"
+            call aws configure set region "%REG_BULK%" --profile "%%a"
+            call aws configure set output table --profile "%%a"
+        )
+    )
+)
+
+:: Don dep file tam
+if exist "%EXIST_PRO%" del /f /q "%EXIST_PRO%"
+
+echo --------------------------------------------------------
+powershell -NoProfile -Command "Write-Host '[OK] Da xu ly xong file accounts.txt.' -ForegroundColor DarkCyan; [Console]::ResetColor()"
+pause & goto MENU
+
+
+:LIST_ACCOUNTS
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║           DANH SACH TAI KHOAN DA DANG NHAP           ║
+echo ╚══════════════════════════════════════════════════════╝
+set count=0
+for /f "tokens=*" %%p in ('aws configure list-profiles') do (
+    set /a count+=1
+    set "profile[!count!]=%%p"
+    echo   [!count!] %%p
+)
+
+if %count%==0 (
+    powershell -NoProfile -Command "Write-Host '[+] Chua co tai khoan nao.' -ForegroundColor DarkYellow; [Console]::ResetColor()"
+    pause & goto MENU
+)
+echo --------------------------------------------------------
+set /p p_choice=">>> Chon STT de xem VPS (0 de quay lai): "
+if "%p_choice%"=="0" goto MENU
+set "SELECTED_PROFILE=!profile[%p_choice%]!"
+
+if not defined SELECTED_PROFILE (
+    powershell -NoProfile -Command "Write-Host '[+] Chon sai.' -ForegroundColor DarkRed; [Console]::ResetColor()"
+    pause & goto LIST_ACCOUNTS
+)
+
+cls
+echo [*] DANG KIEM TRA VPS CUA: !SELECTED_PROFILE!
+call aws ec2 describe-instances --profile "!SELECTED_PROFILE!" --query "Reservations[].Instances[].{Name:Tags[?Key=='Name']|[0].Value,ID:InstanceId,Status:State.Name,PublicIP:PublicIpAddress,Type:InstanceType}" --output table
+pause & goto LIST_ACCOUNTS
+
+:MENU_DELETE_ACC
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║               XOA TAI KHOAN ACCESS KEYS              ║
+echo ╚══════════════════════════════════════════════════════╝
+echo   [1] Xoa tung tai khoan (Chon theo danh sach)
+echo   [2] Xoa TOAN BO tai khoan trong may
+echo   ---                                                
+echo   [3] Quay lai Menu chinh
+echo --------------------------------------------------------
+set /p choice=">>> Moi ban chon (1-3): "
+if "%choice%"=="1" goto DELETE_SINGLE
+if "%choice%"=="2" goto CONFIRM_DELETE_ALL
+if "%choice%"=="3" goto MENU
+goto MENU_DELETE_ACC
+
+:DELETE_SINGLE
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║         XOA TUNG TAI KHOAN AWS (CHON THEO SO)        ║
+echo ╚══════════════════════════════════════════════════════╝
+set "TMP_FILE=%TEMP%\aws_profiles.tmp"
+if exist "%TMP_FILE%" del /f /q "%TMP_FILE%"
+for /f "usebackq tokens=*" %%p in (`aws configure list-profiles 2^>nul`) do echo %%p>>"%TMP_FILE%"
+
+set "COUNT=0"
+if exist "%TMP_FILE%" (for /f "usebackq delims=" %%p in ("%TMP_FILE%") do set /a COUNT+=1)
+
+if %COUNT% EQU 0 (
+    powershell -NoProfile -Command "Write-Host '[+] Khong con profile nao.' -ForegroundColor DarkYellow; [Console]::ResetColor()"
+    if exist "%USERPROFILE%\.aws" rd /s /q "%USERPROFILE%\.aws"
+    pause & goto MENU_DELETE_ACC
+)
+
+set "IDX=0"
+for /f "usebackq delims=" %%p in ("%TMP_FILE%") do (
+    set /a IDX+=1
+    echo   [!IDX!] %%p
+)
+echo --------------------------------------------------------
+set /p CHOOSE=">>> Nhap STT muon xoa (0 de quay lai): "
+if "%CHOOSE%"=="0" goto MENU_DELETE_ACC
+
+set "SELECTED_PROFILE="
+set "CUR=0"
+for /f "usebackq delims=" %%p in ("%TMP_FILE%") do (
+    set /a CUR+=1
+    if !CUR! EQU %CHOOSE% set "SELECTED_PROFILE=%%p"
+)
+
+if "%SELECTED_PROFILE%"=="" goto DELETE_SINGLE
+
+echo [+] Xac nhan xoa: %SELECTED_PROFILE% ? (y/n)
+set /p CONFIRM="Lua chon: "
+if /I not "!CONFIRM!"=="y" goto DELETE_SINGLE
+
+if %COUNT% EQU 1 (
+    if exist "%USERPROFILE%\.aws" rd /s /q "%USERPROFILE%\.aws"
+) else (
+    call :REMOVE_PROFILE "%SELECTED_PROFILE%"
+)
+
+powershell -NoProfile -Command "Write-Host '[OK] Da xoa xong profile.' -ForegroundColor DarkGreen; [Console]::ResetColor()"
+if exist "%TMP_FILE%" del /f /q "%TMP_FILE%"
+pause & goto MENU_DELETE_ACC
+
+:REMOVE_PROFILE
+set "P_NAME=%~1"
+set "AWS_DIR=%USERPROFILE%\.aws"
+powershell -NoProfile -Command "$p='%P_NAME%';$out=@();$skip=$false;foreach($l in Get-Content '%AWS_DIR%\credentials'){$t=$l.Trim();if($t -eq ('['+$p+']')){$skip=$true;continue}if($t.StartsWith('[') -and $skip){$skip=$false}if(-not $skip){$out+=$l}};$out | Set-Content '%AWS_DIR%\credentials'"
+powershell -NoProfile -Command "$p='%P_NAME%';$out=@();$skip=$false;foreach($l in Get-Content '%AWS_DIR%\config'){$t=$l.Trim();if($t -eq ('[profile '+$p+']')){$skip=$true;continue}if($t.StartsWith('[') -and $skip){$skip=$false}if(-not $skip){$out+=$l}};$out | Set-Content '%AWS_DIR%\config'"
+goto :eof
+
+:CONFIRM_DELETE_ALL
+cls
+powershell -NoProfile -Command "Write-Host 'CANH BAO: XOA TOAN BO TAI KHOAN' -ForegroundColor DarkRed; [Console]::ResetColor()"
+set /p confirm=">>> Ban co chac chan? (y/n): "
+if /i "%confirm%"=="y" (
+    if exist "%USERPROFILE%\.aws" rd /s /q "%USERPROFILE%\.aws"
+    powershell -NoProfile -Command "Write-Host '[OK] Da xoa sach tat ca.' -ForegroundColor DarkGreen; [Console]::ResetColor()"
+)
+pause & goto MENU_DELETE_ACC
+
+:IMPORT_SHEET
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║          NHAP TU GOOGLE SHEETS - CHECK TRUNG LAP     ║
+echo ╚══════════════════════════════════════════════════════╝
+
+set "SHEET_URL=https://docs.google.com/spreadsheets/d/1TsbjXtvCsbjNSdfeTTTmspYs2fKfmJL_r1dxpJPlVL8/export?format=csv"
+
+powershell -NoProfile -Command "Write-Host '[*] Dang tai du lieu tu Google Sheets...' -ForegroundColor DarkCyan; [Console]::ResetColor()"
+
+:: Tai file CSV ve may
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%SHEET_URL%', 'sheets_data.csv')"
+
+if not exist "sheets_data.csv" (
+    powershell -NoProfile -Command "Write-Host '[Loi] Khong the tai du lieu.' -ForegroundColor DarkRed; [Console]::ResetColor()"
+    pause & goto MENU_ADD_ACC
+)
+
+:: Tao danh sach profile hien tai
+set "EXIST_PRO=%TEMP%\exist_aws_sheet.tmp"
+aws configure list-profiles > "%EXIST_PRO%"
+
+set "REG_BULK="
+set /p REG_BULK="[-] Nhap Region chung (Mac dinh ap-northeast-1): "
+if "%REG_BULK%"=="" set "REG_BULK=ap-northeast-1"
+
+echo.
+echo [*] Dang quet va so sanh du lieu...
+echo --------------------------------------------------------
+
+:: Su dung vong lap for de doc file CSV
+for /f "usebackq skip=1 tokens=1-3 delims=," %%a in ("sheets_data.csv") do (
+    set "RAW_NAME=%%~a"
+    set "V_NAME=!RAW_NAME:|=!"
+    set "V_NAME=!V_NAME: =!"
+    
+    set "V_ACC=%%~b"
+    set "V_SEC=%%~c"
+    
+    if not "%%~b" == "" (
+        findstr /x /c:"!V_NAME!" "%EXIST_PRO%" >nul
+        if !errorlevel! equ 0 (
+            set "OLD_PRO=[?] Profile [!V_NAME!] da ton tai. Bo qua"
+            powershell -NoProfile -Command "Write-Host $env:OLD_PRO -ForegroundColor DarkYellow; [Console]::ResetColor()"
+        ) else (
+            echo [+] Dang nap moi: !V_NAME!
+            call aws configure set aws_access_key_id "%%~b" --profile "!V_NAME!"
+            call aws configure set aws_secret_access_key "%%~c" --profile "!V_NAME!"
+            call aws configure set region "%REG_BULK%" --profile "!V_NAME!"
+            call aws configure set output table --profile "!V_NAME!"
+        )
+    )
+)
+
+if exist "sheets_data.csv" del /f /q "sheets_data.csv"
+if exist "%EXIST_PRO%" del /f /q "%EXIST_PRO%"
+
+echo --------------------------------------------------------
+powershell -NoProfile -Command "Write-Host '[OK] Da hoan tat dong bo.' -ForegroundColor DarkGreen; [Console]::ResetColor()"
+pause & goto MENU
+
+:: --- CO CHE THUC THI AO (COPY - RUN - DELETE) ---
+:EXEC_VIRTUAL
+cls
+if exist "%TARGET%" (
+    echo [*] Dang khoi tao moi truong thuc thi ao cho: %TARGET%...
+    
+    :: 1. [COPY] Tao file tam .bat voi ten ngau nhien trong thu muc Temp cua Windows
+    set "TMP_BATCH=%TEMP%\aws_exec_%RANDOM%.bat"
+    copy /y "%TARGET%" "!TMP_BATCH!" >nul
+    
+    :: 2. [RUN] Thuc thi file tam (giu lai moi truong lam viec cua Batch)
+    call "!TMP_BATCH!"
+    
+    :: 3. [DELETE] Xoa dau vet ngay lap tuc sau khi module ket thuc
+    if exist "!TMP_BATCH!" del /f /q "!TMP_BATCH!"
+    
+    goto MENU
+    
+) else (
+    echo [Loi] Khong tim thay file module: %TARGET%
+    pause
+    goto MENU
+)

@@ -1,0 +1,144 @@
+:TUYCHON_TAO_PROXY_VPS
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:MENU_PROXY
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │          HE THONG CAI DAT PROXY SOCKS5 AWS           │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   [1] TAO PROXY CHO TAT CA TAI KHOAN AWS             │
+echo │   [2] TAO PROXY CHO TUNG TAI KHOAN AWS               │
+echo │   ---                                                │
+echo │   [3] QUAY LAI MENU CHINH                            │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+set /p m_choice=">>> Moi ban chon (1-3): "
+
+if "%m_choice%"=="1" goto ALL_PROFILES_PROXY
+if "%m_choice%"=="2" goto SINGLE_PROFILE_PROXY
+if "%m_choice%"=="3" exit /b
+goto MENU_PROXY
+
+:SINGLE_PROFILE_PROXY
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║            CHON TAI KHOAN MUON TAO PROXY             ║
+echo ╚══════════════════════════════════════════════════════╝
+set count=0
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a count+=1
+    set "profile[!count!]=%%p"
+    echo    [!count!] %%p
+)
+if %count%==0 (
+    echo [-] Khong tim thay tai khoan nao.
+    pause
+    goto MENU_PROXY
+)
+echo --------------------------------------------------------
+set /p p_choice=">>> Chon STT tai khoan (0 de quay lai): "
+if "%p_choice%"=="0" goto MENU_PROXY
+set "MY_PROFILE=!profile[%p_choice%]!"
+if not defined MY_PROFILE goto SINGLE_PROFILE_PROXY
+goto NHAP_THONG_TIN_CHUNG_PROXY
+
+:ALL_PROFILES_PROXY
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║         DANH SACH TAI KHOAN AWS TAO PROXY            ║
+echo ╚══════════════════════════════════════════════════════╝
+set count=0
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a count+=1
+    set "profile[!count!]=%%p"
+    echo    [!count!] %%p
+)
+if %count%==0 (
+    echo [-] Khong tim thay tai khoan nao.
+    pause
+    goto MENU_PROXY
+)
+echo --------------------------------------------------------
+set "MY_PROFILE=ALL"
+goto NHAP_THONG_TIN_CHUNG_PROXY
+
+:NHAP_THONG_TIN_CHUNG_PROXY
+echo.
+set /p "U_P= + Nhap USER Proxy (Mac dinh: tucha): "
+if "!U_P!"=="" set "U_P=tucha"
+set /p "P_P= + Nhap PASS Proxy (Mac dinh: tcmedia): "
+if "!P_P!"=="" set "P_P=tcmedia"
+set /p "PORT_P= + Nhap PORT Proxy (Mac dinh: 9296): "
+if "!PORT_P!"=="" set "PORT_P=9296"
+
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║               XAC NHAN THONG TIN CAI DAT             ║
+echo ╠══════════════════════════════════════════════════════╣
+echo  - User Proxy: !U_P!
+echo  - Pass Proxy: !P_P!
+echo  - Port Proxy: !PORT_P!
+echo ╚══════════════════════════════════════════════════════╝
+set /p confirm=">>> Bat dau cai dat? (Y/N): "
+if /i "!confirm!" neq "Y" goto MENU_PROXY
+
+:: Khoi tao file ket qua
+set "RESULT_FILE=DANH_SACH_PROXY_MOI.txt"
+echo # Danh sach Proxy tao ngay %date% luc %time% > "%RESULT_FILE%"
+echo # Dinh dang: IP:PORT:USER:PASS >> "%RESULT_FILE%"
+
+if "%MY_PROFILE%"=="ALL" (
+    for /f "tokens=*" %%A in ('aws configure list-profiles 2^>nul') do (
+        call :XU_LY_CAI_DAT "%%A"
+    )
+) else (
+    call :XU_LY_CAI_DAT "%MY_PROFILE%"
+)
+
+echo.
+echo [-] Hoan tat! Ket qua luu tai: %RESULT_FILE%
+start notepad.exe "%RESULT_FILE%"
+pause
+goto MENU_PROXY
+
+:XU_LY_CAI_DAT
+set "CURRENT_PROF=%~1"
+set "IP_FILE=%TEMP%\ips_%CURRENT_PROF%.txt"
+
+:: QUAN TRONG: Tro duong dan vao dung thu muc chua Key cua tung Profile
+set "PEM_FILE=AWS_DATABASE\%CURRENT_PROF%\key-proxy-vps.pem"
+
+if not exist "%PEM_FILE%" (
+    echo [-] LOI: Thieu file PEM tai %PEM_FILE% - Bo qua tai khoan này.
+    exit /b
+)
+
+:: Lay IP Public
+aws ec2 describe-instances --profile "%CURRENT_PROF%" --region ap-northeast-1 --filters "Name=instance-state-name,Values=running" --query "Reservations[].Instances[].PublicIpAddress" --output text > "%IP_FILE%"
+
+:: Xu ly file IP
+powershell -NoProfile -Command "$p='%IP_FILE%'; if(Test-Path $p){ (Get-Content $p) -split '\s+' | ? {$_} | Set-Content $p }"
+
+set "USER_SSH=ubuntu"
+
+for /f "usebackq tokens=*" %%I in ("%IP_FILE%") do (
+    echo [*] [Acc: %CURRENT_PROF%] Dang xu ly: %%I
+    
+    :: Buoc 1: Copy script (Dung file PEM rieng cua profile)
+    scp -i "%PEM_FILE%" -o StrictHostKeyChecking=no install_proxy.sh %USER_SSH%@%%I:/tmp/install_proxy.sh >nul 2>&1
+    
+    if !errorlevel! equ 0 (
+        :: Buoc 2: Chay lenh cai dat
+        ssh -i "%PEM_FILE%" -o StrictHostKeyChecking=no %USER_SSH%@%%I "sudo sed -i 's/\r$//' /tmp/install_proxy.sh && printf '!U_P!\n!P_P!\n!PORT_P!\n' | sudo -i bash /tmp/install_proxy.sh"
+        
+        echo %%I:!PORT_P!:!U_P!:!P_P! >> "%RESULT_FILE%"
+        echo [+] THANH CONG: %%I
+    ) else (
+        echo [!] THAT BAI: Khong the SSH vao %%I (Sai Key hoặc Port 22 chua mo)
+    )
+)
+if exist "%IP_FILE%" del /f /q "%IP_FILE%"
+exit /b

@@ -1,0 +1,144 @@
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:: Thiet lap file log de ghi lai tai khoan bi loi (Blocked/Limit)
+set "ERROR_LOG=DANH_SACH_ACC_LOI.txt"
+
+:MENU_TAO_VPS
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │        HE THONG QUAN LY TAO (LAUNCH) VPS AWS         │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   [1] TAO VPS CHO TAT CA TAI KHOAN                   │
+echo │   [2] CHON TAI KHOAN DE TAO                          │
+echo │   ---                                          │
+echo │   [3] Thoat                                          │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+set /p "choice=>>> Moi ban chon (1-3): "
+
+if "%choice%"=="1" goto CONFIG_ALL
+if "%choice%"=="2" goto SELECT_ACCOUNT_TAO_VPS
+if "%choice%"=="3" exit /b
+goto MENU_TAO_VPS
+
+:: ----------------------------------------------------------
+:CONFIG_ALL
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║         TAO VPS CHO TOAN BO TAI KHOAN AWS            ║
+echo ╚══════════════════════════════════════════════════════╝
+set /p "num_all=>>> Nhap so luong VPS moi tai khoan (Mac dinh 8): "
+if "!num_all!"=="" set "num_all=8"
+
+echo.
+echo [-] He thong se tao !num_all! VPS cho TAT CA tai khoan.
+set /p "confirm=>>> Nhan 'Y' de tiep tuc, phim khac de huy: "
+if /i "!confirm!" neq "Y" goto MENU_TAO_VPS
+
+:: Xoa file log loi cu truoc khi chay moi
+if exist "%ERROR_LOG%" del /f /q "%ERROR_LOG%"
+
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set "p=%%p"
+    echo.
+    echo ────────────────────────────────────────────────────────
+    echo [*] Dang xu ly tai khoan: !p!
+    
+    aws ec2 run-instances ^
+        --profile "!p!" ^
+        --region ap-northeast-1 ^
+        --image-id ami-0f65fc8c24ec8d2a1 ^
+        --count !num_all! ^
+        --instance-type t2.nano ^
+        --key-name key-proxy-vps ^
+        --security-group-ids sg-06d73560648888d60 ^
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=VPS-!p!}]" ^
+        --output table
+    
+    if !errorlevel! equ 0 (
+        echo [OK] Da gui lenh tao !num_all! VPS cho !p!.
+    ) else (
+        echo [LOI] Tai khoan !p! bi Block hoac loi Limit.
+        echo !p! >> "%ERROR_LOG%"
+    )
+)
+
+if exist "%ERROR_LOG%" (
+    echo.
+    echo ────────────────────────────────────────────────────────
+    echo [-] CANH BAO: Co tai khoan bi loi trong qua trinh tao.
+    echo [-] Danh sach da duoc luu tai: %ERROR_LOG%
+    echo ────────────────────────────────────────────────────────
+)
+pause
+goto MENU_TAO_VPS
+
+:: ----------------------------------------------------------
+:SELECT_ACCOUNT_TAO_VPS
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║             CHON TAI KHOAN MUON TAO VPS              ║
+echo ╚══════════════════════════════════════════════════════╝
+set count=0
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a count+=1
+    set "profile[!count!]=%%p"
+    echo    [!count!] %%p
+)
+
+if %count% equ 0 (
+    echo [-] Khong tim thay tai khoan nao.
+    pause
+    goto MENU_TAO_VPS
+)
+
+echo --------------------------------------------------------
+set /p "p_choice=>>> Nhap so thu tu (0 de quay lai): "
+if "%p_choice%"=="0" goto MENU_TAO_VPS
+set "SELECTED_PROFILE=!profile[%p_choice%]!"
+if not defined SELECTED_PROFILE goto SELECT_ACCOUNT_TAO_VPS
+
+:CONFIG_LAUNCH_SINGLE
+cls
+echo [*] Dang tai bang thong ke cho: !SELECTED_PROFILE!...
+echo --------------------------------------------------------
+aws ec2 describe-instances ^
+    --profile "!SELECTED_PROFILE!" ^
+    --region ap-northeast-1 ^
+    --query "Reservations[].Instances[].{Name:Tags[?Key=='Name']|[0].Value,ID:InstanceId,Status:State.Name,IP:PublicIpAddress,Type:InstanceType}" ^
+    --output table
+
+if !errorlevel! neq 0 echo [-] Canh bao: Khong the lay du lieu thong ke.
+
+echo.
+set /p "num_vps=>>> Nhap so luong VPS muon tao (Mac dinh 8): "
+if "!num_vps!"=="" set "num_vps=8"
+
+set /p "confirm=>>> Nhan 'Y' de thuc thi, phim khac de huy: "
+if /i "!confirm!" neq "Y" goto SELECT_ACCOUNT_TAO_VPS
+
+echo.
+echo [*] Dang tien hanh tao !num_vps! VPS cho !SELECTED_PROFILE!...
+aws ec2 run-instances ^
+    --profile "!SELECTED_PROFILE!" ^
+    --region ap-northeast-1 ^
+    --image-id ami-0f65fc8c24ec8d2a1 ^
+    --count !num_vps! ^
+    --instance-type t2.nano ^
+    --key-name key-proxy-vps ^
+    --security-group-ids sg-06d73560648888d60 ^
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=VPS-!SELECTED_PROFILE!}]" ^
+    --output table
+
+if !errorlevel! equ 0 (
+    echo.
+    echo [OK] DA GUI LENH TAO THANH CONG.
+) else (
+    echo.
+    echo [LOI] Khong the thuc hien. Vui long kiem tra lai thong so SG/AMI.
+)
+pause
+goto MENU_TAO_VPS

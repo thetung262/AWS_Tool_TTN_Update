@@ -1,0 +1,165 @@
+:AWS_CHECKER
+
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:CHECK_MENU
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │      HE THONG KIEM TRA - DON DEP AWS PRO             │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   [1] Kiem tra TOAN BO tai khoan (Scan All)          │
+echo │   [2] Kiem tra TUNG tai khoan (Chon theo so)         │
+echo │   [3] XOA TAT CA tai khoan da chet (Clean Die)       │
+echo │   ---                                                │
+echo │   [4] Quay lai Menu chinh                            │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+set /p "c_choice=>>> Nhap lua chon cua ban (1-4): "
+
+if "%c_choice%"=="1" goto CHECK_ALL
+if "%c_choice%"=="2" goto CHECK_SINGLE
+if "%c_choice%"=="3" goto CLEAN_DIE
+if "%c_choice%"=="4" exit /b
+goto CHECK_MENU
+
+:: ----------------------------------------------------------
+:CHECK_ALL
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║           DANH SACH TAI KHOAN TREN HE THONG          ║
+echo ╚══════════════════════════════════════════════════════╝
+set "idx=0"
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a idx+=1
+    echo   [!idx!] %%p
+)
+echo ────────────────────────────────────────────────────────
+:: echo [!] Bam phim bat ky de bat dau quet...
+::pause >nul
+
+echo.
+echo [*] Dang tien hanh quet thuc te...
+echo --------------------------------------------------------
+set "total=0"
+set "live=0"
+set "die=0"
+
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set "p=%%p"
+    if defined p (
+        set /a total+=1
+        <nul set /p "=Check [!total!]: !p! ... "
+        
+        aws sts get-caller-identity --profile "!p!" >nul 2>&1
+        
+        if !errorlevel! equ 0 (
+            echo [ LIVE ]
+            set /a live+=1
+        ) else (
+            echo [ DIE ]
+            set /a die+=1
+        )
+    )
+)
+
+:: --- PHAN TONG KET DEP MAT ---
+echo.
+echo ╔══════════════════════════════════════════════════════╗
+echo ║               KET QUA KIEM TRA CUOI CUNG             ║
+echo ╠══════════════════════════════════════════════════════╣
+echo ║  - Tong so tai khoan : %total%                         
+echo ║  - So tai khoan LIVE : %live%                        
+echo ║  - So tai khoan DIE  : %die%                         
+echo ╚══════════════════════════════════════════════════════╝
+echo Bam phim bat ky de quay lai menu...
+pause >nul
+goto CHECK_MENU
+
+:: ----------------------------------------------------------
+:CHECK_SINGLE
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║              CHON TAI KHOAN KIEM TRA                 ║
+echo ╚══════════════════════════════════════════════════════╝
+set "count=0"
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a count+=1
+    set "prof_!count!=%%p"
+    echo   [!count!] %%p
+)
+echo ────────────────────────────────────────────────────────
+if %count% equ 0 (
+    echo [!] Khong tim thay tai khoan nao.
+    pause
+    goto CHECK_MENU
+)
+set /p "num_choice=>>> Nhap SO THU TU can check (1-%count%): "
+if not defined prof_%num_choice% (
+    echo [!] Lua chon khong hop le.
+    pause
+    goto CHECK_SINGLE
+)
+set "target_prof=!prof_%num_choice%!"
+echo.
+echo [*] Dang kiem tra: !target_prof!...
+aws sts get-caller-identity --profile "!target_prof!" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo TRANG THAI: [ LIVE ] - Hoat dong tot.
+) else (
+    echo TRANG THAI: [ DIE ] - Loi hoac bi khoa.
+)
+pause
+goto CHECK_MENU
+
+:: ----------------------------------------------------------
+:CLEAN_DIE
+cls
+echo [*] Dang quet he thong de loc tai khoan DIE...
+set "die_count=0"
+for /l %%i in (1,1,1000) do set "die_prof_%%i="
+
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set "p=%%p"
+    aws sts get-caller-identity --profile "!p!" >nul 2>&1
+    if !errorlevel! neq 0 (
+        set /a die_count+=1
+        set "die_prof_!die_count!=!p!"
+    )
+)
+
+if %die_count% equ 0 (
+    echo [OK] Chuc mung! Khong co tai khoan nao bi DIE.
+    pause
+    goto CHECK_MENU
+)
+
+echo ╔══════════════════════════════════════════════════════╗
+echo ║       DANH SACH %die_count% TAI KHOAN DIE CAN XU LY       
+echo ╚══════════════════════════════════════════════════════╝
+for /l %%i in (1,1,%die_count%) do (
+    echo   [%%i] !die_prof_%%i!
+)
+echo ────────────────────────────────────────────────────────
+echo.
+set /p "confirm=>>> Ban co CHAC CHAN muon XOA TAT CA %die_count% tai khoan nay? (Y/N): "
+if /i "%confirm%" neq "Y" goto CHECK_MENU
+
+echo.
+echo [*] Dang tien hanh xoa...
+set "deleted=0"
+for /l %%i in (1,1,%die_count%) do (
+    set "p_to_del=!die_prof_%%i!"
+    echo [-] Dang don dep: !p_to_del!...
+    powershell -NoProfile -Command "$p = \"$env:USERPROFILE\.aws\credentials\"; if(Test-Path $p){ (Get-Content $p) | Where-Object { $_ -notmatch \"\[!p_to_del!\]\" } | Set-Content $p }" >nul 2>&1
+    aws configure set aws_access_key_id "" --profile "!p_to_del!" >nul 2>&1
+    aws configure set aws_secret_access_key "" --profile "!p_to_del!" >nul 2>&1
+    set /a deleted+=1
+)
+
+echo ────────────────────────────────────────────────────────
+echo [XONG] Da don dep thanh cong %deleted% tai khoan DIE.
+pause
+goto CHECK_MENU

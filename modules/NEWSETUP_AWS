@@ -1,0 +1,120 @@
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:MENU_NEWSETUP_AWS
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │      THIET LAP AWS - LAY THONG SO TAO VPS - PROXY    │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   He thong se tu dong quet lay AMI, Subnet ID        │
+echo │   va khoi tao Key Pair, Security Group...            │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+echo.
+
+:: 1. Liet ke tai khoan hien co
+set count=0
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a count+=1
+    set "profile[!count!]=%%p"
+    echo    [!count!] %%p
+)
+
+if %count% equ 0 (
+    echo [-] Khong tim thay tai khoan nao.
+    pause
+    exit /b
+)
+
+echo --------------------------------------------------------
+set /p "choice=>>> Chon tai khoan (1-%count%, 0 de thoat): "
+
+if "%choice%"=="0" exit /b
+if not defined profile[%choice%] (
+    echo [-] Lua chon khong hop le.
+    pause
+    goto MENU_NEWSETUP_AWS
+)
+
+set "MY_PROFILE=!profile[%choice%]!"
+set "MY_REGION=ap-northeast-1"
+set "KEY_NAME=key-proxy-vps"
+set "SG_NAME=Proxy-Security-Group"
+
+:: --- QUY HOACH THU MUC DU LIEU ---
+set "ROOT_DB=AWS_DATABASE"
+set "DATA_DIR=!ROOT_DB!\!MY_PROFILE!"
+if not exist "!DATA_DIR!" mkdir "!DATA_DIR!" 2>nul
+
+echo.
+echo [*] Dang thiet lap cho [%MY_PROFILE%] tai [%MY_REGION%]...
+
+:: 2. QUET LAY SUBNET ID MAC DINH
+for /f "tokens=*" %%s in ('aws ec2 describe-subnets --profile "!MY_PROFILE!" --region !MY_REGION! --query "Subnets[0].SubnetId" --output text 2^>nul') do (
+    set "MY_SUBNET_ID=%%s"
+)
+
+:: 3. QUET LAY AMI UBUNTU 22.04 MOI NHAT
+for /f "tokens=*" %%a in ('aws ec2 describe-images --profile "!MY_PROFILE!" --region !MY_REGION! --owners 099720109477 --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" "Name=state,Values=available" --query "sort_by(Images, &CreationDate)[-1].ImageId" --output text 2^>nul') do (
+    set "MY_AMI_ID=%%a"
+)
+
+:: 5. TAO SECURITY GROUP
+set "MY_SG_ID="
+for /f "tokens=*" %%g in ('aws ec2 create-security-group --profile "!MY_PROFILE!" --region !MY_REGION! --group-name "!SG_NAME!" --description "Mo cong Proxy TCP va UDP" --query "GroupId" --output text 2^>nul') do (
+    set "MY_SG_ID=%%g"
+)
+if "!MY_SG_ID!"=="" (
+    for /f "tokens=*" %%g in ('aws ec2 describe-security-groups --profile "!MY_PROFILE!" --region !MY_REGION! --group-names "!SG_NAME!" --query "SecurityGroups[0].GroupId" --output text 2^>nul') do (
+        set "MY_SG_ID=%%g"
+    )
+)
+
+:: 6. MO PORT
+aws ec2 authorize-security-group-ingress --profile "!MY_PROFILE!" --region !MY_REGION! --group-id !MY_SG_ID! --protocol tcp --port 22 --cidr 0.0.0.0/0 >nul 2>&1
+aws ec2 authorize-security-group-ingress --profile "!MY_PROFILE!" --region !MY_REGION! --group-id !MY_SG_ID! --protocol tcp --port 9296 --cidr 0.0.0.0/0 >nul 2>&1
+aws ec2 authorize-security-group-ingress --profile "!MY_PROFILE!" --region !MY_REGION! --group-id !MY_SG_ID! --protocol udp --port 9296 --cidr 0.0.0.0/0 >nul 2>&1
+
+:: 4. XU LY KEY PAIR (Xoa tren AWS va tao moi de lay file .pem chuan)
+aws ec2 describe-key-pairs --profile "!MY_PROFILE!" --region !MY_REGION! --key-names "!KEY_NAME!" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo [-] Key da ton tai tren AWS. Dang xoa de lam moi...
+    aws ec2 delete-key-pair --profile "!MY_PROFILE!" --region !MY_REGION! --key-name "!KEY_NAME!"
+)
+:: Ghi file .pem vao thu mục rieng cua Profile trong AWS_DATABASE
+aws ec2 create-key-pair --profile "!MY_PROFILE!" --region !MY_REGION! --key-name "!KEY_NAME!" --query "KeyMaterial" --output text > "!DATA_DIR!\!KEY_NAME!.pem"
+
+:: 7. GHI THONG SO VAO FILE TEXT
+set "LOG_FILE=!DATA_DIR!\AWS_SETUP_LOG.txt"
+echo ======================================================== > "!LOG_FILE!"
+echo   THONG SO THIET LAP AWS - PROFILE: !MY_PROFILE! >> "!LOG_FILE!"
+echo   Ngay tao: %date% %time% >> "!LOG_FILE!"
+echo ======================================================== >> "!LOG_FILE!"
+echo 1. Profile       : !MY_PROFILE! >> "!LOG_FILE!"
+echo 2. Region        : !MY_REGION! >> "!LOG_FILE!"
+echo 3. AMI ID        : !MY_AMI_ID! >> "!LOG_FILE!"
+echo 4. Subnet ID     : !MY_SUBNET_ID! >> "!LOG_FILE!"
+echo 5. Security Group: !MY_SG_ID! >> "!LOG_FILE!"
+echo 6. Key Name      : !KEY_NAME! >> "!LOG_FILE!"
+echo ======================================================== >> "!LOG_FILE!"
+
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║    CAC THONG SO DA SAN SANG DE TAO VPS HANG LOAT     ║
+echo ╠══════════════════════════════════════════════════════╣
+echo ║  1. Profile       : !MY_PROFILE!
+echo ║  2. Region        : !MY_REGION!
+echo ║  3. AMI ID        : !MY_AMI_ID!
+echo ║  4. Subnet ID     : !MY_SUBNET_ID!
+echo ║  5. Security Group: !MY_SG_ID!
+echo ║  6. Key Name      : !KEY_NAME!
+echo ╚══════════════════════════════════════════════════════╝
+echo.
+echo [-] Da gom du lieu vao: !cd!\!DATA_DIR!
+echo [-] File Key: !KEY_NAME!.pem
+echo [-] File Log: AWS_SETUP_LOG.txt
+echo.
+pause
+goto MENU_NEWSETUP_AWS

@@ -1,0 +1,97 @@
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:MAIN
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │        TRINH CAI DAT - CAP NHAT AWS CLI TU DONG      │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   He thong se kiem tra trang thai AWS CLI tren PC    │
+echo │   va tien hanh xu ly tu dong...                      │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+echo.
+
+:: Buoc 1: Kiem tra xem AWS CLI da duoc cai dat chua
+echo [*] Dang kiem tra trang thai AWS CLI...
+where aws >nul 2>&1
+
+if %errorlevel% neq 0 (
+    echo [!] Trang thai: CHUA CAI DAT.
+    echo.
+    set /p "choice=Ban co muon cai dat moi khong? (Y/N): "
+    if /i "!choice!"=="Y" goto INSTALL_PROCESS
+    exit /b
+) else (
+    echo [!] Trang thai: DA CAI DAT.
+    for /f "tokens=*" %%a in ('aws --version 2^>^&1') do set "current_ver=%%a"
+    echo [*] !current_ver!
+    echo.
+    set /p "choice=Ban co muon kiem tra va ghi de ban cap nhat khong? (Y/N): "
+    if /i "!choice!"=="Y" goto UPDATE_PROCESS
+    exit /b
+)
+
+:: ----------------------------------------------------------
+:INSTALL_PROCESS
+echo.
+echo [*] Bat dau qua trinh tai va cai dat moi...
+set "URL=https://awscli.amazonaws.com/AWSCLIV2.msi"
+set "MSI_FILE=%TEMP%\AWSCLIV2.msi"
+
+echo [*] Dang tai trinh cai dat tu Amazon...
+curl -L -o "%MSI_FILE%" %URL%
+
+if %errorlevel% neq 0 (
+    echo [LOI] Khong the tai file cai dat. Vui long kiem tra internet.
+    pause
+    exit /b
+)
+
+echo [*] Dang thuc thi cai dat (Co the hien cua so cai dat)...
+:: Dung /passive de hien thanh tien do nhung khong can bam Next
+msiexec.exe /i "%MSI_FILE%" /passive /norestart
+
+if %errorlevel% equ 0 (
+    echo --------------------------------------------------------
+    echo [OK] Cai dat AWS CLI thanh cong.
+    if exist "%MSI_FILE%" del /f /q "%MSI_FILE%"
+    echo [!] Vui long khoi dong lai CMD de su dung lenh 'aws'.
+    echo --------------------------------------------------------
+) else (
+    echo [LOI] Qua trinh cai dat gap su co. Ma loi: %errorlevel%
+)
+pause
+exit /b
+
+:: ----------------------------------------------------------
+:UPDATE_PROCESS
+echo.
+echo [*] Kiem tra va chuan bi cap nhat...
+set "URL=https://awscli.amazonaws.com/AWSCLIV2.msi"
+set "MSI_FILE=%TEMP%\AWSCLIV2_Update.msi"
+
+echo [*] Dang tai ban cap nhat moi nhat...
+curl -L -o "%MSI_FILE%" %URL%
+
+if %errorlevel% neq 0 (
+    echo [LOI] Khong the tai ban cap nhat.
+    pause
+    exit /b
+)
+
+echo [*] Dang ghi de ban cap nhat (Passive mode)...
+msiexec.exe /i "%MSI_FILE%" /passive /norestart
+
+if %errorlevel% equ 0 (
+    echo --------------------------------------------------------
+    echo [OK] Da hoan tat qua trinh cap nhat AWS CLI.
+    if exist "%MSI_FILE%" del /f /q "%MSI_FILE%"
+    echo --------------------------------------------------------
+) else (
+    echo [LOI] Cap nhat that bai. Ma loi: %errorlevel%
+)
+pause
+exit /b

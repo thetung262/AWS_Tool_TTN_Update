@@ -1,0 +1,154 @@
+@echo off
+setlocal enabledelayedexpansion
+chcp 65001 >nul
+
+:MENU_XOA_VPS
+cls
+echo ┌──────────────────────────────────────────────────────┐
+echo │        HE THONG QUAN LY XOA (TERMINATE) VPS          │
+echo ├──────────────────────────────────────────────────────┤
+echo │                                                      │
+echo │   [1] XOA TAT CA VPS (Tat Ca Tai Khoan AWS)          │
+echo │   [2] CHON TAI KHOAN                                 │
+echo │   ---                                                │
+echo │   [3] Thoat                                          │
+echo │                                                      │
+echo └──────────────────────────────────────────────────────┘
+set /p "choice=>>> Moi ban chon (1-3): "
+
+if "%choice%"=="1" goto CONFIRM_TERMINATE_ALL
+if "%choice%"=="2" goto SELECT_ACCOUNT_XOA_VPS
+if "%choice%"=="3" exit /b
+goto MENU_XOA_VPS
+
+:CONFIRM_TERMINATE_ALL
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║         CANH BAO NGUY HIEM: XOA VINH VIEN            ║
+echo ╚══════════════════════════════════════════════════════╝
+echo [-] Ban dang chon XOA VINH VIEN tat ca VPS tren moi Profile.
+echo [-] Hanh dong nay KHONG THE hoan tac.
+echo.
+set /p "conf=>>> Ban co chac chan muon XOA HET khong? (Y/N): "
+if /i "!conf!" neq "Y" goto MENU_XOA_VPS
+
+:TERMINATE_ALL
+cls
+echo [*] Dang quet va xoa tat ca VPS tren moi tai khoan...
+echo --------------------------------------------------------
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set "p=%%p"
+    echo [Profile: !p!] Dang tim kiem VPS...
+    
+    set "IDS="
+    for /f "tokens=*" %%i in ('aws ec2 describe-instances --profile "!p!" --filters "Name=instance-state-name,Values=running,stopped,pending,stopping" --query "Reservations[].Instances[].InstanceId" --output text 2^>nul') do (
+        set "IDS=!IDS! %%i"
+    )
+
+    if not "!IDS!"=="" (
+        echo [+] Dang XOA cac ID: !IDS!
+        aws ec2 terminate-instances --profile "!p!" --instance-ids !IDS! --output table
+    ) else (
+        echo [-] Tai khoan nay khong co VPS nao de xoa.
+    )
+    echo --------------------------------------------------------
+)
+echo === DA GUI LENH XOA CHO TOAN BO TAI KHOAN ===
+pause
+goto MENU_XOA_VPS
+
+:SELECT_ACCOUNT_XOA_VPS
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║         CHON TAI KHOAN KIEM TRA DE XOA               ║
+echo ╚══════════════════════════════════════════════════════╝
+set count=0
+for /f "tokens=*" %%p in ('aws configure list-profiles 2^>nul') do (
+    set /a count+=1
+    set "profile[!count!]=%%p"
+    echo    [!count!] %%p
+)
+
+if %count% equ 0 (
+    echo [-] Khong tim thay tai khoan nao.
+    pause
+    goto MENU_XOA_VPS
+)
+
+echo --------------------------------------------------------
+set /p "p_choice=>>> Nhap so thu tu (0 de quay lai): "
+if "%p_choice%"=="0" goto MENU_XOA_VPS
+set "SELECTED_PROFILE=!profile[%p_choice%]!"
+if not defined SELECTED_PROFILE goto SELECT_ACCOUNT_XOA_VPS
+
+:HIENTHI_VPS_XOA_VPS
+cls
+echo [*] Dang tai danh sach VPS cua: !SELECTED_PROFILE!...
+echo --------------------------------------------------------
+aws ec2 describe-instances ^
+    --profile "!SELECTED_PROFILE!" ^
+    --query "Reservations[].Instances[].{Name:Tags[?Key=='Name']|[0].Value,ID:InstanceId,Status:State.Name,IP:PublicIpAddress,Type:InstanceType}" ^
+    --output table
+
+echo --------------------------------------------------------
+echo   [1] XOA TAT CA VPS trong tai khoan nay
+echo   [2] CHON TUNG VPS de xoa (Theo danh sach)
+echo   [3] Quay lai
+echo --------------------------------------------------------
+set /p "sub_choice=>>> Lua chon: "
+if "%sub_choice%"=="1" goto TERMINATE_VPS_SINGLE_ACC
+if "%sub_choice%"=="2" goto CHON_TUNG_VPS_DE_XOA
+goto SELECT_ACCOUNT_XOA_VPS
+
+:TERMINATE_VPS_SINGLE_ACC
+echo.
+echo [*] Dang quet ID de xoa cho !SELECTED_PROFILE!...
+set "IDS="
+for /f "tokens=*" %%i in ('aws ec2 describe-instances --profile "!SELECTED_PROFILE!" --filters "Name=instance-state-name,Values=running,stopped,pending,stopping" --query "Reservations[].Instances[].InstanceId" --output text 2^>nul') do (
+    set "IDS=!IDS! %%i"
+)
+if not "!IDS!"=="" (
+    aws ec2 terminate-instances --profile "!SELECTED_PROFILE!" --instance-ids !IDS! --output table
+    echo [+] Da gui lenh XOA thanh cong.
+) else (
+    echo [-] Khong co VPS nao de xoa.
+)
+pause
+goto HIENTHI_VPS_XOA_VPS
+
+:CHON_TUNG_VPS_DE_XOA
+cls
+echo ╔══════════════════════════════════════════════════════╗
+echo ║             CHON VPS CU THE DE XOA                   ║
+echo ╚══════════════════════════════════════════════════════╝
+set v_count=0
+for /f "tokens=*" %%v in ('aws ec2 describe-instances --profile "!SELECTED_PROFILE!" --filters "Name=instance-state-name,Values=running,stopped,pending,stopping" --query "Reservations[].Instances[].InstanceId" --output text 2^>nul') do (
+    for %%g in (%%v) do (
+        set /a v_count+=1
+        set "vps_id[!v_count!]=%%g"
+        echo    [!v_count!] ID: %%g
+    )
+)
+
+if %v_count% equ 0 (
+    echo [-] Khong tim thay VPS nao co the xoa.
+    pause
+    goto HIENTHI_VPS_XOA_VPS
+)
+
+echo --------------------------------------------------------
+set /p "v_choice=>>> Nhap so thu tu VPS muon xoa (0 de quay lai): "
+if "%v_choice%"=="0" goto HIENTHI_VPS_XOA_VPS
+set "TARGET_ID=!vps_id[%v_choice%]!"
+
+if not defined TARGET_ID (
+    echo [-] Lua chon sai!
+    pause
+    goto CHON_TUNG_VPS_DE_XOA
+)
+
+echo [-] DANG TIEN HANH XOA: !TARGET_ID!
+aws ec2 terminate-instances --profile "!SELECTED_PROFILE!" --instance-ids !TARGET_ID! --output table
+echo [+] Da xong.
+pause
+goto CHON_TUNG_VPS_DE_XOA
